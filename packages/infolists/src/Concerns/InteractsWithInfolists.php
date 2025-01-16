@@ -40,6 +40,8 @@ trait InteractsWithInfolists
 
     public ?string $mountedInfolistActionsInfolist = null;
 
+    public ?array $mountedInfolistActionsArguments = [];
+
     public function getInfolist(string $name): ?Infolist
     {
         $infolist = $this->getCachedInfolists()[$name] ?? null;
@@ -165,9 +167,10 @@ trait InteractsWithInfolists
         return $result;
     }
 
-    public function mountInfolistAction(string $name, ?string $component = null, ?string $infolist = null): mixed
+    public function mountInfolistAction(string $name, ?string $component = null, ?string $infolist = null, array $arguments = []): mixed
     {
         $this->mountedInfolistActions[] = $name;
+        $this->mountedInfolistActionsArguments[] = $arguments;
         $this->mountedInfolistActionsData[] = [];
 
         if (blank($this->mountedInfolistActionsComponent) && filled($component)) {
@@ -258,11 +261,13 @@ trait InteractsWithInfolists
 
     public function getMountedInfolistAction(): ?Action
     {
+        $actionNestingIndex ??= array_key_last($this->mountedInfolistActions);
+
         if (! count($this->mountedInfolistActions ?? [])) {
             return null;
         }
 
-        return $this->getMountedInfolistActionComponent()?->getAction($this->mountedInfolistActions);
+        return $this->getMountedInfolistActionComponent()?->getAction($this->mountedInfolistActions)?->arguments($this->mountedInfolistActionsArguments[$actionNestingIndex] ?? []);
     }
 
     public function getMountedInfolistActionComponent(): ?Component
@@ -301,8 +306,7 @@ trait InteractsWithInfolists
         $action = $this->getMountedInfolistAction();
 
         if (! ($shouldCancelParentActions && $action)) {
-            array_pop($this->mountedInfolistActions);
-            array_pop($this->mountedInfolistActionsData);
+            $this->popMountedInfolistAction();
         } elseif ($action->shouldCancelAllParentActions()) {
             $this->mountedInfolistActions = [];
             $this->mountedInfolistActionsData = [];
@@ -310,8 +314,7 @@ trait InteractsWithInfolists
             $parentActionToCancelTo = $action->getParentActionToCancelTo();
 
             while (true) {
-                $recentlyClosedParentAction = array_pop($this->mountedInfolistActions);
-                array_pop($this->mountedInfolistActionsData);
+                $recentlyClosedParentAction = $this->popMountedInfolistAction();
 
                 if (
                     blank($parentActionToCancelTo) ||
@@ -341,6 +344,17 @@ trait InteractsWithInfolists
         $this->resetErrorBag();
 
         $this->openInfolistActionModal();
+    }
+
+    protected function popMountedInfolistAction(): ?string
+    {
+        try {
+            return array_pop($this->mountedInfolistActions);
+        } finally {
+            array_pop($this->mountedInfolistActionsArguments);
+            array_pop($this->mountedInfolistActions);
+            array_pop($this->mountedInfolistActionsData);
+        }
     }
 
     protected function makeInfolist(): Infolist
